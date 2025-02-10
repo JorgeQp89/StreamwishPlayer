@@ -1,6 +1,24 @@
+from http.server import BaseHTTPRequestHandler
 import requests
 import re
 from bs4 import BeautifulSoup
+
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # URL de ejemplo (puedes modificarla según tus necesidades)
+        url_streamwish = "https://streamwish.to/e/ycvwokf2eerf"
+        enlace_original = obtener_enlace_m3u8(url_streamwish)
+
+        # Configurar la respuesta HTTP
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+
+        # Enviar el resultado como respuesta
+        if enlace_original:
+            self.wfile.write(f"Enlace original obtenido: {enlace_original}".encode())
+        else:
+            self.wfile.write("No se pudo obtener el enlace original.".encode())
 
 def obtener_enlace_m3u8(url):
     try:
@@ -45,17 +63,6 @@ def obtener_enlace_m3u8(url):
                 except Exception as e:
                     continue
 
-        if enlace_m3u8:
-            return enlace_m3u8
-        else:
-            return "No se encontró ningún enlace .m3u8 en el tráfico de red."
+        return enlace_m3u8
     except Exception as e:
         return f"Ocurrió un error: {e}"
-
-# Ejemplo de uso
-url_streamwish = "https://streamwish.to/e/ycvwokf2eerf"
-enlace_original = obtener_enlace_m3u8(url_streamwish)
-if enlace_original:
-    print(f"Enlace original obtenido: {enlace_original}")
-else:
-    print("No se pudo obtener el enlace original.")
