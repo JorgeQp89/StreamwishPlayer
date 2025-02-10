@@ -1,45 +1,54 @@
-from playwright.sync_api import sync_playwright
+import requests
 import re
+from bs4 import BeautifulSoup
 
 def obtener_enlace_m3u8(url):
     try:
-        with sync_playwright() as p:
-            # Iniciar un navegador Chromium en modo headless
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+        # Configurar encabezados para simular un navegador
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+            "Referer": url,
+        }
 
-            # Navegar a la URL
-            page.goto(url, wait_until="networkidle")
+        # Realizar la solicitud inicial a la página
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            return f"Error al acceder a la página: {response.status_code}"
 
-            # Esperar a que el elemento <video> esté presente
-            page.wait_for_selector("video", timeout=20000)
+        # Analizar el contenido HTML
+        soup = BeautifulSoup(response.text, "html.parser")
 
-            # Capturar el tráfico de red
-            m3u8_pattern = re.compile(r'https://[^\s]*\.m3u8[^\s]*')
-            enlace_m3u8 = None
+        # Buscar scripts que puedan contener el enlace .m3u8
+        scripts = soup.find_all("script")
+        m3u8_pattern = re.compile(r'https://[^\s]*\.m3u8[^\s]*')
+        enlace_m3u8 = None
 
-            def handle_request(route, request):
-                nonlocal enlace_m3u8
-                if ".m3u8" in request.url:
-                    enlace_m3u8 = request.url
-                route.continue_()
+        for script in scripts:
+            if script.string:
+                match = m3u8_pattern.search(script.string)
+                if match:
+                    enlace_m3u8 = match.group(0)
+                    break
 
-            # Intercepta las solicitudes de red
-            page.route("**/*.m3u8", handle_request)
+        # Si no se encuentra el enlace en los scripts, buscar en las solicitudes AJAX
+        if not enlace_m3u8:
+            # Extraer posibles endpoints AJAX desde el HTML
+            ajax_endpoints = re.findall(r'"(https?://[^"]+)"', response.text)
+            for endpoint in ajax_endpoints:
+                try:
+                    ajax_response = requests.get(endpoint, headers=headers)
+                    if ajax_response.status_code == 200:
+                        match = m3u8_pattern.search(ajax_response.text)
+                        if match:
+                            enlace_m3u8 = match.group(0)
+                            break
+                except Exception as e:
+                    continue
 
-            # Simular la reproducción del video
-            page.evaluate("document.querySelector('video').play()")
-
-            # Esperar unos segundos para capturar el tráfico
-            page.wait_for_timeout(5000)
-
-            # Cerrar el navegador
-            browser.close()
-
-            if enlace_m3u8:
-                return enlace_m3u8
-            else:
-                return "No se encontró ningún enlace .m3u8 en el tráfico de red."
+        if enlace_m3u8:
+            return enlace_m3u8
+        else:
+            return "No se encontró ningún enlace .m3u8 en el tráfico de red."
     except Exception as e:
         return f"Ocurrió un error: {e}"
 
